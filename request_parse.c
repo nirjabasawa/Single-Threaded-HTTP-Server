@@ -1,8 +1,6 @@
 //
 // Nirja Basawa
-// nbasawa
-// UCSC CSE130
-// Assignment 4
+// 05/07/24
 //
 
 #include <sys/types.h>
@@ -11,7 +9,6 @@
 #include "request_parse.h"
 
 #define REQREGEX    "([A-Za-z]+) +(/[a-zA-Z0-9.-]{1,63}) +(HTTP/[0-9][.][0-9])"
-#define REQIDREGEX  "([a-zA-Z0-9.-]{1,128}): ([1-128])+\r\n"
 #define HEADERREGEX "([a-zA-Z0-9.-]{1,128}): ([ -~]{1,128})+\r\n"
 
 // method helper functions
@@ -75,34 +72,6 @@ int request_parse(Request *req, char *buffer, ssize_t read_bytes) {
         regfree(&regex);
         return EXIT_FAILURE;
     }
-
-    // request-id parsing
-    req->request_id = 0; // by default, if not found should be 0
-    if (buffer[2] != '\r' && buffer[3] != '\n') {
-        rv = regcomp(&regex, REQIDREGEX, REG_EXTENDED);
-        rv = regexec(&regex, buffer, 3, pmatches, 0);
-
-        if (rv == 0) {
-            // update null char at end
-            buffer[pmatches[1].rm_eo] = '\0';
-            buffer[pmatches[2].rm_eo] = '\0';
-            if (strncmp(buffer, "Request-Id", 10) == 0) {
-                // match
-                int val = strtol(buffer + pmatches[2].rm_so, NULL, 10);
-                if (errno == EINVAL) {
-                    //printf("\nInside request-id check");
-                    // invalid
-                    dprintf(req->in_fd,
-                        "HTTP/1.1 400 Bad Request\r\nContent-Length: %d\r\n\r\nBad Request\n", 12);
-                }
-                req->request_id = val;
-            }
-            buffer += pmatches[2].rm_eo + 2;
-            tot_offset += pmatches[2].rm_eo + 2;
-            //rv = regexec(&regex, buffer, 3, pmatches, 0);
-        }
-    }
-
     //printf("\nmethod=%s, uri=%s, version=%s", req->method, req->uri, req->version);
     // content length parsing
     req->content_length = -1; // value -1 for unknown
@@ -159,7 +128,6 @@ int method_get(Request *req) {
 
     if ((fd = open(fileToServe, O_RDONLY | O_DIRECTORY)) != -1) {
         dprintf(req->in_fd, "HTTP/1.1 403 Forbidden\r\nContent-Length: %d\r\n\r\nForbidden\n", 10);
-        fprintf(stderr, "%s,%s,403,%d", req->method, req->uri, req->request_id);
         return EXIT_FAILURE;
     }
     if ((fd = open(fileToServe, O_RDONLY)) == -1) {
@@ -167,18 +135,15 @@ int method_get(Request *req) {
             // file/directory doesn't exist
             dprintf(
                 req->in_fd, "HTTP/1.1 404 Not Found\r\nContent-Length: %d\r\n\r\nNot Found\n", 10);
-            fprintf(fprintf(stderr, "%s,%s,404,%d", req->method, req->uri, req->request_id);)
         } else if (errno == EACCES) {
             // no permissions
             dprintf(
                 req->in_fd, "HTTP/1.1 403 Forbidden\r\nContent-Length: %d\r\n\r\nForbidden\n", 10);
-            fprintf(stderr, "%s,%s,403,%d", req->method, req->uri, req->request_id);
         } else {
             dprintf(req->in_fd,
                 "HTTP/1.1 500 Internal Server Error\r\nContent-Length: %d\r\n\r\nInternal Server "
                 "Error\n",
                 22);
-            fprintf(stderr, "%s,%s,500,%d", req->method, req->uri, req->request_id);
         }
         return EXIT_FAILURE;
     }
@@ -190,7 +155,6 @@ int method_get(Request *req) {
 
     char buffer[4096] = { '\0' };
     dprintf(req->in_fd, "HTTP/1.1 200 OK\r\nContent-Length: %ld\r\n\r\n", file_size);
-    fprintf(stderr, "%s,%s,200,%d", req->method, req->uri, req->request_id);
 
     int n;
     int written_bytes = 0;
@@ -203,7 +167,6 @@ int method_get(Request *req) {
             "HTTP/1.1 500 Internal Server Error\r\nContent-Length: %d\r\n\r\nInternal Server "
             "Error\n",
             22);
-        fprintf(stderr, "%s,%s,500,%d", req->method, req->uri, req->request_id);
         return EXIT_FAILURE;
     }
 
@@ -219,7 +182,6 @@ int method_put(Request *req) {
     if (req->content_length == -1) {
         dprintf(
             req->in_fd, "HTTP/1.1 400 Bad Request\r\nContent-Length: %d\r\n\r\nBad Request\n", 12);
-        fprintf(stderr, "%s,%s,400,%d", req->method, req->uri, req->request_id);
         return EXIT_FAILURE;
     }
 
@@ -230,7 +192,6 @@ int method_put(Request *req) {
     // check for directory
     if ((fd = open(fileToWrite, O_RDWR)) == -1 && errno == EISDIR) {
         dprintf(req->in_fd, "HTTP/1.1 403 Forbidden\r\nContent-Length: %d\r\n\r\nForbidden\n", 10);
-        fprintf(stderr, "%s,%s,403,%d", req->method, req->uri, req->request_id);
         return EXIT_FAILURE;
     }
 
@@ -242,14 +203,12 @@ int method_put(Request *req) {
         } else if (errno == EACCES) {
             dprintf(
                 req->in_fd, "HTTP/1.1 403 Forbidden\r\nContent-Length: %d\r\n\r\nForbidden\n", 10);
-            fprintf(stderr, "%s,%s,403,%d", req->method, req->uri, req->request_id);
             return EXIT_FAILURE;
         } else {
             dprintf(req->in_fd,
                 "HTTP/1.1 500 Internal Server Error\r\nContent-Length: %d\r\n\r\nInternal Server "
                 "Error\n",
                 22);
-            fprintf(stderr, "%s,%s,500,%d", req->method, req->uri, req->request_id);
             return EXIT_FAILURE;
         }
     } else if (fd != -1) {
@@ -264,7 +223,6 @@ int method_put(Request *req) {
                 // permission denied
                 dprintf(req->in_fd,
                     "HTTP/1.1 403 Forbidden\r\nContent-Length: %d\r\n\r\nForbidden\n", 10);
-                fprintf(stderr, "%s,%s,403,%d", req->method, req->uri, req->request_id);
                 return EXIT_FAILURE;
             } else {
                 // file function issue
@@ -272,7 +230,6 @@ int method_put(Request *req) {
                     "HTTP/1.1 500 Internal Server Error\r\nContent-Length: %d\r\n\r\nInternal "
                     "Server Error\n",
                     22);
-                fprintf(stderr, "%s,%s,500,%d", req->method, req->uri, req->request_id);
                 return EXIT_FAILURE;
             }
         }
@@ -285,7 +242,6 @@ int method_put(Request *req) {
             "HTTP/1.1 500 Internal Server Error\r\nContent-Length: %d\r\n\r\nInternal Server "
             "Error\n",
             22);
-        fprintf(stderr, "%s,%s,500,%d", req->method, req->uri, req->request_id);
         return EXIT_FAILURE;
     }
 
@@ -308,7 +264,6 @@ int method_put(Request *req) {
                 "HTTP/1.1 500 Internal Server Error\r\nContent-Length: %d\r\n\r\nInternal Server "
                 "Error\n",
                 22);
-            fprintf(stderr, "%s,%s,500,%d", req->method, req->uri, req->request_id);
             return EXIT_FAILURE;
         }
     }
@@ -316,10 +271,8 @@ int method_put(Request *req) {
     // output status codes with response
     if (status_code == 201) {
         dprintf(req->in_fd, "HTTP/1.1 201 Created\r\nContent-Length: %d\r\n\r\nCreated\n", 8);
-        fprintf(stderr, "%s,%s,201,%d", req->method, req->uri, req->request_id);
     } else {
         dprintf(req->in_fd, "HTTP/1.1 200 OK\r\nContent-Length: %d\r\n\r\nOK\n", 3);
-        fprintf(stderr, "%s,%s,200,%d", req->method, req->uri, req->request_id);
     }
 
     // finish and close
