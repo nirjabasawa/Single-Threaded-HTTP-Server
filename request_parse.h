@@ -1,8 +1,6 @@
 //
 // Nirja Basawa
-// nbasawa
-// UCSC CSE130
-// Assignment 4
+// 05/07/24
 //
 
 #pragma once
